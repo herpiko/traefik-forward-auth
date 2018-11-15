@@ -196,14 +196,15 @@ func (f *ForwardAuth) GetUser(token string) (User, error) {
 func (f *ForwardAuth) redirectBase(r *http.Request) string {
   proto := r.Header.Get("X-Forwarded-Proto")
   host := r.Header.Get("X-Forwarded-Host")
-
-  return fmt.Sprintf("%s://%s", proto, host)
+  if len(proto) > 0 {
+    proto += "://"
+  }
+  return fmt.Sprintf("%s%s%s", proto, host, f.Path)
 }
 
 // Return url
 func (f *ForwardAuth) returnUrl(r *http.Request) string {
   path := r.Header.Get("X-Forwarded-Uri")
-
   return fmt.Sprintf("%s%s", f.redirectBase(r), path)
 }
 
@@ -211,10 +212,14 @@ func (f *ForwardAuth) returnUrl(r *http.Request) string {
 func (f *ForwardAuth) redirectUri(r *http.Request) string {
   if use, _ := f.useAuthDomain(r); use {
     proto := r.Header.Get("X-Forwarded-Proto")
-    return fmt.Sprintf("%s://%s%s", proto, f.AuthHost, f.Path)
+    if len(proto) > 0 {
+      proto += "://"
+    }
+
+    return fmt.Sprintf("%s%s", proto, f.AuthHost)
   }
 
-  return fmt.Sprintf("%s%s", f.redirectBase(r), f.Path)
+  return fmt.Sprintf("%s", f.redirectBase(r))
 }
 
 // Should we use auth host + what it is
@@ -244,7 +249,7 @@ func (f *ForwardAuth) MakeCookie(r *http.Request, email string) *http.Cookie {
   return &http.Cookie{
     Name: f.CookieName,
     Value: value,
-    Path: "/",
+    Path :"",
     Domain: f.cookieDomain(r),
     HttpOnly: true,
     Secure: f.CookieSecure,
@@ -257,7 +262,7 @@ func (f *ForwardAuth) MakeCSRFCookie(r *http.Request, nonce string) *http.Cookie
   return &http.Cookie{
     Name: f.CSRFCookieName,
     Value: nonce,
-    Path: "/",
+    Path :"",
     Domain: f.csrfCookieDomain(r),
     HttpOnly: true,
     Secure: f.CookieSecure,
@@ -270,7 +275,7 @@ func (f *ForwardAuth) ClearCSRFCookie(r *http.Request) *http.Cookie {
   return &http.Cookie{
     Name: f.CSRFCookieName,
     Value: "",
-    Path: "/",
+    Path :"",
     Domain: f.csrfCookieDomain(r),
     HttpOnly: true,
     Secure: f.CookieSecure,

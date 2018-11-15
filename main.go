@@ -184,7 +184,7 @@ func main() {
 
   // Setup
   fw = &ForwardAuth{
-    Path: fmt.Sprintf("/%s", *path),
+    Path: fmt.Sprintf("%s", *path),
     Lifetime: time.Second * time.Duration(*lifetime),
     Secret: []byte(*secret),
     AuthHost: *authHost,
