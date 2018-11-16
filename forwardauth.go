@@ -280,7 +280,7 @@ func (f *ForwardAuth) ClearCSRFCookie(r *http.Request) *http.Cookie {
 	}
 }
 
-// Validate the csrf cookie against state
+// Validate the csrf cookie against state. DEPRECATED
 func (f *ForwardAuth) ValidateCSRFCookie(c *http.Cookie, state string) (bool, string, error) {
 	if len(c.Value) != 32 {
 		return false, "", errors.New("Invalid CSRF cookie value")
