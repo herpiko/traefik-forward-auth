@@ -15,19 +15,17 @@ import (
 var fw *ForwardAuth
 var log = logging.MustGetLogger("traefik-forward-auth")
 
+func ok(w http.ResponseWriter, r *http.Request) {
+	http.Error(w, "OK", 500)
+}
+
 // Primary handler
 func handler(w http.ResponseWriter, r *http.Request) {
-	// Parse uri
-	uri, err := url.Parse(r.Header.Get("X-Forwarded-Uri"))
-	if err != nil {
-		log.Error("Error parsing url")
-		http.Error(w, "Service unavailable", 503)
-		return
-	}
-
 	// Handle callback
-	if uri.Path == fw.Path {
-		handleCallback(w, r, uri.Query())
+	state := r.FormValue("state")
+	code := r.FormValue("code")
+	if len(state) > 0 && len(code) > 0 {
+		handleCallback(w, r, state, code)
 		return
 	}
 
@@ -41,10 +39,6 @@ func handler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Service unavailable", 503)
 			return
 		}
-
-		// Set the CSRF cookie
-		http.SetCookie(w, fw.MakeCSRFCookie(r, nonce))
-		log.Debug("Set CSRF cookie and redirecting to google login")
 
 		// Forward them on
 		http.Redirect(w, r, fw.GetLoginURL(r, nonce), http.StatusTemporaryRedirect)
@@ -73,29 +67,15 @@ func handler(w http.ResponseWriter, r *http.Request) {
 }
 
 // Authenticate user after they have come back from google
-func handleCallback(w http.ResponseWriter, r *http.Request, qs url.Values) {
-	// Check for CSRF cookie
-	csrfCookie, err := r.Cookie(fw.CSRFCookieName)
-	if err != nil {
-		log.Debug("Missing csrf cookie")
-		http.Error(w, "Not authorized", 401)
-		return
-	}
+func handleCallback(w http.ResponseWriter, r *http.Request, state string, code string) {
 
-	// Validate state
-	state := qs.Get("state")
-	valid, redirect, err := fw.ValidateCSRFCookie(csrfCookie, state)
-	if !valid {
-		log.Debugf("Invalid oauth state, expected '%s', got '%s'\n", csrfCookie.Value, state)
-		http.Error(w, "Not authorized", 401)
-		return
-	}
+	redirect := state[33:]
 
 	// Clear CSRF cookie
 	http.SetCookie(w, fw.ClearCSRFCookie(r))
 
 	// Exchange code for token
-	token, err := fw.ExchangeCode(r, qs.Get("code"))
+	token, err := fw.ExchangeCode(r, code)
 	if err != nil {
 		log.Debugf("Code exchange failed with: %s\n", err)
 		http.Error(w, "Service unavailable", 503)
@@ -113,8 +93,12 @@ func handleCallback(w http.ResponseWriter, r *http.Request, qs url.Values) {
 	http.SetCookie(w, fw.MakeCookie(r, user.Email))
 	log.Debugf("Generated auth cookie for %s\n", user.Email)
 
-	// Redirect
-	http.Redirect(w, r, redirect, http.StatusTemporaryRedirect)
+	// TODO generate JWT
+	jwt := "jwtstring"
+
+	// Inject token
+	redirect = "/ok"
+	fmt.Fprintf(w, "<html>OK<script>window.localStorage.setItem('token', '"+jwt+"'); window.location = '"+redirect+"';</script></html>")
 }
 
 // Main
@@ -122,6 +106,7 @@ func main() {
 	// Parse options
 	flag.String(flag.DefaultConfigFlagname, "", "Path to config file")
 	path := flag.String("url-path", "_oauth", "Callback URL")
+	address := flag.String("address", "_oauth", "Your instance address")
 	lifetime := flag.Int("lifetime", 43200, "Session length in seconds")
 	secret := flag.String("secret", "", "*Secret used for signing (required)")
 	authHost := flag.String("auth-host", "", "Central auth login")
@@ -180,8 +165,12 @@ func main() {
 	}
 
 	// Setup
+	callbackPath := fmt.Sprintf("%s", *path)
+	if callbackPath[0:1] == "/" && address != nil {
+		callbackPath = fmt.Sprintf("%s", *address) + callbackPath
+	}
 	fw = &ForwardAuth{
-		Path:     fmt.Sprintf("%s", *path),
+		Path:     callbackPath,
 		Lifetime: time.Second * time.Duration(*lifetime),
 		Secret:   []byte(*secret),
 		AuthHost: *authHost,
@@ -218,6 +207,13 @@ func main() {
 
 	// Attach handler
 	http.HandleFunc("/", handler)
+	http.HandleFunc("/ok", ok)
+	/*
+		  callbackPath = fmt.Sprintf("%s", *path)
+		  if callbackPath[0:1] == "/" {
+			  http.HandleFunc("/oauth2/callback", oauthCallbackHandler)
+		  }
+	*/
 
 	log.Debugf("Staring with options: %#v", fw)
 	log.Notice("Litening on :4181")
