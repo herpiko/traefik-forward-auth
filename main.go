@@ -1,19 +1,30 @@
 package main
 
 import (
+	"database/sql"
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
+	_ "github.com/lib/pq"
 	"github.com/namsral/flag"
 	"github.com/op/go-logging"
 )
 
 // Vars
-var fw *ForwardAuth
+//var db = *sql.DB
 var log = logging.MustGetLogger("traefik-forward-auth")
+var (
+	fw      *ForwardAuth
+	DB_HOST string
+	DB_PORT string
+	DB_NAME string
+	DB_USER string
+	DB_PASS string
+)
 
 func ok(w http.ResponseWriter, r *http.Request) {
 	http.Error(w, "OK", 500)
@@ -103,6 +114,22 @@ func handleCallback(w http.ResponseWriter, r *http.Request, state string, code s
 
 // Main
 func main() {
+	DB_HOST = os.Getenv("DB_HOST")
+	DB_PORT = os.Getenv("DB_PORT")
+	DB_NAME = os.Getenv("DB_NAME")
+	DB_USER = os.Getenv("DB_USER")
+	DB_PASS = os.Getenv("DB_PASS")
+
+	db, err := sql.Open("postgres", fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", DB_USER, DB_PASS, DB_HOST, DB_PORT, DB_NAME))
+	if err != nil {
+		fmt.Println("i")
+		panic(err)
+	}
+	if err = db.Ping(); err != nil {
+		fmt.Println("x")
+		panic(err)
+	}
+
 	// Parse options
 	flag.String(flag.DefaultConfigFlagname, "", "Path to config file")
 	path := flag.String("url-path", "_oauth", "Callback URL")
